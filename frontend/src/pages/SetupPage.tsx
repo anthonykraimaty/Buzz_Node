@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import TeamManager from '../components/TeamManager';
 import QuestionManager from '../components/QuestionManager';
+import { RoundConfig, Round } from '../types';
 
 type Tab = 'teams' | 'questions' | 'settings';
 
@@ -102,73 +103,213 @@ export default function SetupPage() {
 }
 
 function SettingsPanel() {
-  const { gameState } = useGameStore();
+  const { gameState, updateRoundConfig } = useGameStore();
+  const [expandedRound, setExpandedRound] = useState<string | null>(null);
+
+  const handleRoundConfigChange = (roundId: string, field: keyof RoundConfig, value: number | string) => {
+    updateRoundConfig(roundId, { [field]: value });
+  };
+
+  const getRoundIcon = (type: string) => {
+    const icons: Record<string, string> = {
+      'fastest-finger': '⚡',
+      'multiple-choice': '🎯',
+      'true-false': '⚖️',
+      'picture-sound': '🖼️',
+      'steal-points': '💰',
+      'hot-potato': '🥔',
+      'ladder': '📈',
+      'final': '🏆',
+    };
+    return icons[type] || '❓';
+  };
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold mb-4">Game Settings</h2>
+      {/* Round Configuration */}
+      <div>
+        <h2 className="text-2xl font-bold mb-4">Round Settings</h2>
+        <p className="text-gray-400 mb-4">Configure time limits, points, and other settings for each round type.</p>
 
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="block text-gray-400 mb-2">Default Time Limit (seconds)</label>
-          <input
-            type="number"
-            defaultValue={gameState?.settings?.defaultTimeLimit || 30}
-            className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white"
-          />
+        <div className="space-y-3">
+          {gameState?.rounds?.map((round: Round) => (
+            <div key={round.id} className="bg-gray-900/50 rounded-xl overflow-hidden">
+              {/* Round Header */}
+              <button
+                onClick={() => setExpandedRound(expandedRound === round.id ? null : round.id)}
+                className="w-full flex items-center justify-between p-4 hover:bg-gray-800/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{getRoundIcon(round.config.type)}</span>
+                  <div className="text-left">
+                    <div className="font-semibold">{round.config.name}</div>
+                    <div className="text-sm text-gray-400">
+                      {round.questions.length} questions • {round.config.timePerQuestion}s per question
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-400">
+                    <span className="text-green-400">+{round.config.pointsCorrect}</span>
+                    {round.config.pointsWrong !== 0 && (
+                      <span className="text-red-400 ml-2">{round.config.pointsWrong}</span>
+                    )}
+                  </div>
+                  <span className={`transition-transform ${expandedRound === round.id ? 'rotate-180' : ''}`}>
+                    ▼
+                  </span>
+                </div>
+              </button>
+
+              {/* Expanded Config Panel */}
+              {expandedRound === round.id && (
+                <div className="border-t border-gray-700 p-4 bg-gray-800/30">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {/* Time Per Question */}
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-1">Time (seconds)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={round.config.timePerQuestion}
+                        onChange={(e) => handleRoundConfigChange(round.id, 'timePerQuestion', parseInt(e.target.value) || 1)}
+                        className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white"
+                      />
+                    </div>
+
+                    {/* Points Correct */}
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-1">Points (Correct)</label>
+                      <input
+                        type="number"
+                        value={round.config.pointsCorrect}
+                        onChange={(e) => handleRoundConfigChange(round.id, 'pointsCorrect', parseInt(e.target.value) || 0)}
+                        className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white"
+                      />
+                    </div>
+
+                    {/* Points Wrong */}
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-1">Points (Wrong)</label>
+                      <input
+                        type="number"
+                        value={round.config.pointsWrong}
+                        onChange={(e) => handleRoundConfigChange(round.id, 'pointsWrong', parseInt(e.target.value) || 0)}
+                        className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white"
+                      />
+                    </div>
+
+                    {/* Question Count (info only) */}
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-1">Questions</label>
+                      <div className="bg-gray-700/50 rounded-lg px-3 py-2 text-gray-300">
+                        {round.questions.length}
+                      </div>
+                    </div>
+
+                    {/* Speed Bonus Points (for multiple-choice) */}
+                    {round.config.type === 'multiple-choice' && (
+                      <>
+                        <div>
+                          <label className="block text-gray-400 text-sm mb-1">Fast Bonus (0-2s)</label>
+                          <input
+                            type="number"
+                            value={round.config.pointsFast || 0}
+                            onChange={(e) => handleRoundConfigChange(round.id, 'pointsFast' as keyof RoundConfig, parseInt(e.target.value) || 0)}
+                            className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-gray-400 text-sm mb-1">Medium Bonus (2-4s)</label>
+                          <input
+                            type="number"
+                            value={round.config.pointsSlow || 0}
+                            onChange={(e) => handleRoundConfigChange(round.id, 'pointsSlow' as keyof RoundConfig, parseInt(e.target.value) || 0)}
+                            className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Ladder Values (for ladder round) */}
+                    {round.config.type === 'ladder' && round.config.ladderValues && (
+                      <div className="col-span-2 md:col-span-4">
+                        <label className="block text-gray-400 text-sm mb-1">Ladder Values (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={round.config.ladderValues.join(', ')}
+                          onChange={(e) => {
+                            const values = e.target.value.split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                            if (values.length > 0) {
+                              handleRoundConfigChange(round.id, 'ladderValues' as keyof RoundConfig, values as unknown as number);
+                            }
+                          }}
+                          className="w-full bg-gray-700 rounded-lg px-3 py-2 text-white font-mono"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Round Description */}
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <div className="text-sm text-gray-500">{round.config.description}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
+      </div>
 
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="block text-gray-400 mb-2">Max Players</label>
-          <input
-            type="number"
-            defaultValue={gameState?.settings?.maxPlayers || 4}
-            className="w-full bg-gray-800 rounded-lg px-4 py-2 text-white"
-          />
-        </div>
+      {/* General Settings */}
+      <div className="mt-8">
+        <h2 className="text-2xl font-bold mb-4">General Settings</h2>
 
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              defaultChecked={gameState?.settings?.playBuzzerSounds ?? true}
-              className="w-5 h-5 rounded"
-            />
-            <span>Play Buzzer Sounds</span>
-          </label>
-        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-gray-900/50 rounded-xl p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                defaultChecked={gameState?.settings?.playBuzzerSounds ?? true}
+                className="w-5 h-5 rounded"
+              />
+              <span>Play Buzzer Sounds</span>
+            </label>
+          </div>
 
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              defaultChecked={gameState?.settings?.playSoundEffects ?? true}
-              className="w-5 h-5 rounded"
-            />
-            <span>Play Sound Effects</span>
-          </label>
-        </div>
+          <div className="bg-gray-900/50 rounded-xl p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                defaultChecked={gameState?.settings?.playSoundEffects ?? true}
+                className="w-5 h-5 rounded"
+              />
+              <span>Play Sound Effects</span>
+            </label>
+          </div>
 
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              defaultChecked={gameState?.settings?.showLeaderboardBetweenRounds ?? true}
-              className="w-5 h-5 rounded"
-            />
-            <span>Show Leaderboard Between Rounds</span>
-          </label>
-        </div>
+          <div className="bg-gray-900/50 rounded-xl p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                defaultChecked={gameState?.settings?.showLeaderboardBetweenRounds ?? true}
+                className="w-5 h-5 rounded"
+              />
+              <span>Show Leaderboard Between Rounds</span>
+            </label>
+          </div>
 
-        <div className="bg-gray-900/50 rounded-xl p-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              defaultChecked={gameState?.settings?.allowLateBuzz ?? false}
-              className="w-5 h-5 rounded"
-            />
-            <span>Allow Late Buzz</span>
-          </label>
+          <div className="bg-gray-900/50 rounded-xl p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                defaultChecked={gameState?.settings?.allowLateBuzz ?? false}
+                className="w-5 h-5 rounded"
+              />
+              <span>Allow Late Buzz</span>
+            </label>
+          </div>
         </div>
       </div>
     </div>

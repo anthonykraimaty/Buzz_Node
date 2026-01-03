@@ -93,15 +93,15 @@ function TeamSlot({
   onUpdate: (team: Team) => void;
   onAdjustScore: (points: number) => void;
 }) {
-  const [editPlayerName, setEditPlayerName] = useState(team?.players[0]?.name || '');
+  const serverPlayerName = team?.players[0]?.name || '';
+  const [editPlayerName, setEditPlayerName] = useState(serverPlayerName);
   const [showSoundPicker, setShowSoundPicker] = useState(false);
   const { playBuzzerSound } = useSounds();
 
+  // Only sync from server when the actual name string changes (not on every render)
   useEffect(() => {
-    if (team) {
-      setEditPlayerName(team.players[0]?.name || '');
-    }
-  }, [team?.players]);
+    setEditPlayerName(serverPlayerName);
+  }, [serverPlayerName]);
 
   const handleSavePlayerName = () => {
     if (team && editPlayerName.trim()) {

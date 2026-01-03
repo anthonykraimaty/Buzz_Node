@@ -336,7 +336,7 @@ export const DEFAULT_ROUNDS: RoundConfig[] = [
     name: 'The Final Showdown',
     description: 'All or nothing! This is it!',
     questionCount: 3,
-    timePerQuestion: 5,   // 4-5s high stakes
+    timePerQuestion: 8,   // High stakes
     pointsCorrect: 5000,
     pointsWrong: -5000
   }

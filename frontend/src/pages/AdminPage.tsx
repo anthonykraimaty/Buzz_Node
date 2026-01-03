@@ -158,24 +158,24 @@ const ROUND_TYPE_MAP: Record<string, RoundType> = {
 };
 
 // Round types that can be randomly assigned
-// Excludes: picture-sound (requires media file), true-false (requires specific TRUE/FALSE format)
+// Excludes: picture-sound (requires media file), true-false (requires specific TRUE/FALSE format), final (special round)
 const RANDOM_ASSIGNABLE_TYPES: RoundType[] = [
   'fastest-finger', 'multiple-choice',
-  'steal-points', 'hot-potato', 'ladder', 'final'
+  'steal-points', 'hot-potato', 'ladder'
 ];
 
 // Parse CSV and group questions by round type
 // CSV Format: Game Mode, Question, Correct Answer, Wrong1, Wrong2, Wrong3, [Media Filename]
-// - If Game Mode is empty, assigns randomly to an available round (excludes picture-sound and true-false)
+// - If Game Mode is empty, assigns randomly to an available round (excludes picture-sound, true-false, final)
 // - For true-false, answers are capitalized to TRUE/FALSE
 // - For picture-sound, column 7 can have media filename (looked up in /media/ folder)
 function parseGlobalCSV(csvText: string, availableRoundTypes?: RoundType[]): { roundType: RoundType; question: Omit<Question, 'id'> }[] {
   const lines = csvText.split(/\r?\n/).filter(line => line.trim());
   const questions: { roundType: RoundType; question: Omit<Question, 'id'> }[] = [];
 
-  // Filter available rounds for random assignment - exclude picture-sound (requires media) and true-false (requires specific format)
+  // Filter available rounds for random assignment - exclude picture-sound, true-false, and final
   const roundsForRandom = availableRoundTypes && availableRoundTypes.length > 0
-    ? availableRoundTypes.filter(t => t !== 'picture-sound' && t !== 'true-false')
+    ? availableRoundTypes.filter(t => t !== 'picture-sound' && t !== 'true-false' && t !== 'final')
     : RANDOM_ASSIGNABLE_TYPES;
 
   // Build weighted selection array - hot-potato gets 2x weight (questions cycle faster)

@@ -610,8 +610,14 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
           const lights: [boolean, boolean, boolean, boolean] = [false, false, false, false];
           lights[event.player - 1] = true;
           buzzController.setLights(lights);
+        } else if (round.config.type === 'final' && buzzResult.isFirst) {
+          // For final round: first buzzer gets to answer, turn off all other lights
+          console.log(`[FINAL] First buzz by controller ${event.player} - only they can answer`);
+          const lights: [boolean, boolean, boolean, boolean] = [false, false, false, false];
+          lights[event.player - 1] = true;
+          buzzController.setLights(lights);
         } else {
-          // Non-fastest-finger mode: just light up the buzzer
+          // Other modes: just light up the buzzer
           const lights: [boolean, boolean, boolean, boolean] = [false, false, false, false];
           lights[event.player - 1] = true;
           buzzController.setLights(lights);
@@ -719,6 +725,26 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
 
         if (!pressedPlayer || pressedPlayer.id !== game.stealPointsState.buzzerPlayerId) {
           continue; // Only the buzzer can answer
+        }
+      }
+
+      // For final round, require buzzing first - only the first buzzer can answer
+      if (round.config.type === 'final') {
+        // Must have buzzed first
+        if (game.buzzedPlayers.length === 0) {
+          console.log(`[PRESS] Answer rejected for final round - no one has buzzed yet`);
+          continue; // No one has buzzed yet - ignore colored button presses
+        }
+
+        // Only the first buzzer can answer
+        const firstBuzzer = game.buzzedPlayers[0];
+        const pressedPlayer = game.teams
+          .flatMap(t => t.players)
+          .find(p => p.controllerIndex === event.player);
+
+        if (!pressedPlayer || pressedPlayer.id !== firstBuzzer.playerId) {
+          console.log(`[PRESS] Answer rejected for final round - not the first buzzer`);
+          continue; // Only the first buzzer can answer
         }
       }
 

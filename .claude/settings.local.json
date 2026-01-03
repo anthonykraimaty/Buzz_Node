@@ -15,7 +15,8 @@
       "Bash(npx ts-node:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git push:*)"
     ]
   }
 }
