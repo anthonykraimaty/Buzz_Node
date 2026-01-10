@@ -92,9 +92,9 @@ Red button LEDs controlled via HID reports:
 4. **Configure Rounds**: Select which round types to include
 5. **Add Questions**: For each round, add appropriate questions
 
-## Importing Questions (CSV Format)
+## Importing Questions (CSV/Excel Format)
 
-Questions can be imported via CSV file. The format is:
+Questions can be imported via CSV or Excel (.xlsx/.xls) file. The format is:
 
 ```
 Game Mode,Question,Correct Answer,Wrong Answer 1,Wrong Answer 2,Wrong Answer 3
@@ -150,10 +150,15 @@ picture-sound,sound_clip.mp3,Dog Barking,Cat Meowing,Bird Chirping,Lion Roaring
 ### Import/Export
 
 1. **Download Sample CSV**: Click "Sample CSV" button to get a template
-2. **Import CSV**: Click "Import CSV" and select your file
+2. **Import CSV/Excel**: Click "Upload CSV/Excel" and select your file (.csv, .xlsx, or .xls)
 3. **Export CSV**: Click "Export CSV" to download all current questions
 
 Questions are automatically matched to rounds by their game mode tag. If a round type doesn't exist in your game, those questions will be skipped.
+
+**Excel Import Notes:**
+- The first sheet of the Excel file will be used
+- Column headers should match the CSV format (Game Mode, Question, Correct Answer, etc.)
+- Excel files are converted to CSV format internally
 
 ### During the Game
 1. Display the **Game Screen** (`/game`) on a TV/projector

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { Question, Choice, RoundType, RoundConfig, ROUND_ICONS, DEFAULT_ROUNDS, Difficulty } from '../types';
+import * as XLSX from 'xlsx';
 
 // Fisher-Yates shuffle for randomizing answer colors
 function shuffleArray<T>(array: T[]): T[] {
@@ -146,6 +147,12 @@ const ROUND_TYPE_MAP: Record<string, RoundType> = {
   'hp': 'hot-potato',
   'potato': 'hot-potato',
   'bomb': 'hot-potato',
+  // Speed Race
+  'speed-race': 'speed-race',
+  'speedrace': 'speed-race',
+  'speed race': 'speed-race',
+  'sr': 'speed-race',
+  'race': 'speed-race',
   // Ladder
   'ladder': 'ladder',
   'the ladder': 'ladder',
@@ -160,7 +167,7 @@ const ROUND_TYPE_MAP: Record<string, RoundType> = {
 // Round types that can be randomly assigned
 // Excludes: picture-sound (requires media file), true-false (requires specific TRUE/FALSE format), final (special round)
 const RANDOM_ASSIGNABLE_TYPES: RoundType[] = [
-  'fastest-finger', 'multiple-choice',
+  'fastest-finger', 'multiple-choice', 'speed-race',
   'steal-points', 'hot-potato', 'ladder'
 ];
 
@@ -343,6 +350,14 @@ const ROUND_CONFIGS: RoundTypeConfig[] = [
     description: 'Identify images, sounds, or clips.',
     questionHint: 'Add media URL for image, audio, or video identification',
     supportsMedia: true,
+    isTrueFalse: false,
+  },
+  {
+    type: 'speed-race',
+    name: 'Speed Race',
+    description: 'Race to answer! Position-based scoring (1st = 500, 2nd = 300...)',
+    questionHint: 'Fast-paced questions where order matters',
+    supportsMedia: false,
     isTrueFalse: false,
   },
   {
@@ -1755,13 +1770,35 @@ Who painted the Mona Lisa?,Leonardo da Vinci,Pablo Picasso,Vincent van Gogh,Mich
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      setCsvText(text);
-      setError('');
-    };
-    reader.readAsText(file);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      // Handle Excel file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          // Convert to CSV format
+          const csvOutput = XLSX.utils.sheet_to_csv(firstSheet);
+          setCsvText(csvOutput);
+          setError('');
+        } catch (err) {
+          setError('Failed to read Excel file. Please check the format.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Handle CSV file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        setCsvText(text);
+        setError('');
+      };
+      reader.readAsText(file);
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -1871,7 +1908,7 @@ Who painted the Mona Lisa?,Leonardo da Vinci,Pablo Picasso,Vincent van Gogh,Mich
             <input
               type="file"
               ref={fileInputRef}
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={handleCSVFileImport}
               className="hidden"
             />
@@ -1884,7 +1921,7 @@ Who painted the Mona Lisa?,Leonardo da Vinci,Pablo Picasso,Vincent van Gogh,Mich
                     onClick={() => fileInputRef.current?.click()}
                     className="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded"
                   >
-                    Upload CSV File
+                    Upload CSV/Excel
                   </button>
                 </div>
                 <textarea
@@ -1993,18 +2030,41 @@ picture,What animal is this?,Dog,Cat,Bird,Fish,dog.jpg
 media,Name this famous landmark,Eiffel Tower,Big Ben,Statue of Liberty,Colosseum,eiffel.png
 ,Random question (no mode),Answer A,Answer B,Answer C,Answer D,`;
 
-  const handleCSVFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      setCsvText(text);
-      setError('');
-      setImportResult(null);
-    };
-    reader.readAsText(file);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      // Handle Excel file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          // Convert to CSV format
+          const csvText = XLSX.utils.sheet_to_csv(firstSheet);
+          setCsvText(csvText);
+          setError('');
+          setImportResult(null);
+        } catch (err) {
+          setError('Failed to read Excel file. Please check the format.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Handle CSV file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        setCsvText(text);
+        setError('');
+        setImportResult(null);
+      };
+      reader.readAsText(file);
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -2075,15 +2135,15 @@ media,Name this famous landmark,Eiffel Tower,Big Ben,Statue of Liberty,Colosseum
       <div className="modal-content max-w-4xl" onClick={e => e.stopPropagation()}>
         <h2 className="text-2xl font-bold mb-2">Import Questions (All Rounds)</h2>
         <p className="text-gray-400 mb-4">
-          Import questions for all rounds from a single CSV file. Questions are automatically distributed based on the Game Mode column.
+          Import questions for all rounds from a CSV or Excel file. Questions are automatically distributed based on the Game Mode column.
         </p>
 
         {/* Hidden file input */}
         <input
           type="file"
           ref={fileInputRef}
-          accept=".csv"
-          onChange={handleCSVFileImport}
+          accept=".csv,.xlsx,.xls"
+          onChange={handleFileImport}
           className="hidden"
         />
 
@@ -2114,7 +2174,7 @@ media,Name this famous landmark,Eiffel Tower,Big Ben,Statue of Liberty,Colosseum
                     onClick={() => fileInputRef.current?.click()}
                     className="text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded"
                   >
-                    Upload CSV File
+                    Upload CSV/Excel
                   </button>
                 </div>
                 <textarea
