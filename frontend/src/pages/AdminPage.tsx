@@ -237,25 +237,30 @@ function parseGlobalCSV(csvText: string, availableRoundTypes?: RoundType[]): { r
     ];
 
     if (isTrueFalse) {
-      // True/False only needs 2 options
-      if (wrong1?.trim()) {
-        answers.push({ text: formatAnswer(wrong1), isCorrect: false });
-      } else {
-        // Auto-add opposite answer if not provided
-        const correctLower = correctAnswer.toLowerCase().trim();
-        if (correctLower === 'true' || correctLower === 't') {
-          answers.push({ text: 'FALSE', isCorrect: false });
-        } else {
-          answers.push({ text: 'TRUE', isCorrect: false });
-        }
-      }
+      // True/False: always TRUE first, FALSE second (no shuffling)
+      const correctFormatted = formatAnswer(correctAnswer);
+      const isCorrectTrue = correctFormatted === 'TRUE';
+
+      // Build choices with TRUE always first
+      const choices: Choice[] = [
+        { id: 'a', text: 'TRUE', color: CHOICE_COLORS[0], isCorrect: isCorrectTrue },
+        { id: 'b', text: 'FALSE', color: CHOICE_COLORS[1], isCorrect: !isCorrectTrue },
+      ];
+
+      const question: Omit<Question, 'id'> = {
+        text: questionText.trim(),
+        choices,
+      };
+
+      questions.push({ roundType, question });
+      continue; // Skip the rest of the loop for true-false
     } else {
       if (wrong1?.trim()) answers.push({ text: wrong1.trim(), isCorrect: false });
       if (wrong2?.trim()) answers.push({ text: wrong2.trim(), isCorrect: false });
       if (wrong3?.trim()) answers.push({ text: wrong3.trim(), isCorrect: false });
     }
 
-    // Shuffle answers to randomize color assignment
+    // Shuffle answers to randomize color assignment (not for true-false)
     const shuffledAnswers = shuffleArray(answers);
 
     // Assign colors to shuffled answers
@@ -1096,7 +1101,8 @@ export default function AdminPage() {
 // Helper to get full media URL
 const getMediaUrl = (url: string) => {
   if (url.startsWith('/')) {
-    return `http://localhost:3005${url}`;
+    // Use dynamic host for LAN access
+    return `http://${window.location.hostname}:3005${url}`;
   }
   return url;
 };

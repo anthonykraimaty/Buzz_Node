@@ -222,7 +222,7 @@ export default function GamePage() {
                     color: buzzedTeam?.id === team.id ? team.color : undefined
                   }}
                 >
-                  <div className="text-sm text-gray-400">{team.funName || team.name}</div>
+                  <div className="text-sm text-gray-400">{team.players[0]?.name || team.name}</div>
                   <div className="text-3xl font-black" style={{ color: team.color }}>
                     {team.score.toLocaleString()}
                   </div>
@@ -332,11 +332,24 @@ export default function GamePage() {
                     </div>
                   )}
 
+                  {/* Steal Points answer countdown */}
+                  {isStealPoints && stealState && stealState.phase === 'answering' && !gameState.answerRevealed && (
+                    <div className={`absolute -right-4 -top-4 w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black ${
+                      stealState.answerTimeLeft <= 2
+                        ? 'bg-red-500 countdown-urgent'
+                        : stealState.answerTimeLeft <= 3
+                        ? 'bg-yellow-500 animate-pulse'
+                        : 'bg-gray-800'
+                    }`}>
+                      {stealState.answerTimeLeft}
+                    </div>
+                  )}
+
                   <div className="text-lg font-bold text-white/80">
-                    {isFastestFinger ? 'FASTEST FINGER!' : 'FIRST BUZZ!'}
+                    {isFastestFinger ? 'FASTEST FINGER!' : isStealPoints ? 'POINT HEIST!' : 'FIRST BUZZ!'}
                   </div>
                   <div className="text-3xl font-black text-white">{buzzedPlayerInfo.name}</div>
-                  <div className="text-sm text-white/80">{buzzedTeam.funName || buzzedTeam.name}</div>
+                  <div className="text-sm text-white/80">{buzzedTeam.players[0]?.name || buzzedTeam.name}</div>
                   <div className="text-xs text-white/60 mt-1">Buzzer {currentTurnBuzzer.controllerIndex}</div>
 
                   {/* Show eliminated players indicator */}
@@ -404,6 +417,22 @@ export default function GamePage() {
                       {ffState.answerTimeLeft}
                     </div>
                   </div>
+                ) : isStealPoints && stealState && stealState.phase === 'answering' ? (
+                  /* Steal Points Answer Phase Timer */
+                  <div className="flex flex-col items-center">
+                    <div className="text-sm text-yellow-400 uppercase tracking-wider mb-2">Answer Time</div>
+                    <div
+                      className={`w-28 h-28 rounded-full flex items-center justify-center text-5xl font-black transition-all shadow-lg ${
+                        stealState.answerTimeLeft <= 2
+                          ? 'bg-red-500/30 text-red-400 countdown-urgent'
+                          : stealState.answerTimeLeft <= 3
+                          ? 'bg-yellow-500/30 text-yellow-400 animate-pulse'
+                          : 'bg-yellow-500/30 text-yellow-400'
+                      }`}
+                    >
+                      {stealState.answerTimeLeft}
+                    </div>
+                  </div>
                 ) : isFastestFinger && ffState && ffState.phase === 'buzzing' ? (
                   /* Fastest Finger Buzzing Phase Timer */
                   <div className="flex flex-col items-center">
@@ -456,7 +485,7 @@ export default function GamePage() {
               const totalTime = currentRound?.config.timePerQuestion || 15;
               const blurAmount = gameState.answerRevealed ? 0 : Math.max(0, (timeLeft / totalTime) * 20);
               const mediaUrl = gameState.currentQuestion.mediaUrl.startsWith('/')
-                ? `http://localhost:3005${gameState.currentQuestion.mediaUrl}`
+                ? `http://${window.location.hostname}:3005${gameState.currentQuestion.mediaUrl}`
                 : gameState.currentQuestion.mediaUrl;
 
               return (
@@ -556,7 +585,7 @@ export default function GamePage() {
                                 key={answer.playerId}
                                 className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold"
                                 style={{ backgroundColor: team?.color }}
-                                title={team?.name}
+                                title={team?.players[0]?.name || team?.name}
                               >
                                 {/* Only show ✓/✗ after answer is revealed */}
                                 {gameState.answerRevealed ? (answer.isCorrect ? '✓' : '✗') : ''}
@@ -576,6 +605,50 @@ export default function GamePage() {
               })}
             </div>
 
+            {/* Response Time Leaderboard for True-False rounds */}
+            {currentRound?.config.type === 'true-false' && gameState.playerAnswers.length > 0 && (
+              <div className="mt-6 w-full max-w-2xl">
+                <div className="bg-gray-800/80 rounded-xl border border-gray-600/50 p-4">
+                  <div className="text-center text-gray-400 text-sm font-bold mb-3 uppercase tracking-wider">
+                    ⚡ Response Times
+                  </div>
+                  <div className="flex justify-center gap-4 flex-wrap">
+                    {[...gameState.playerAnswers]
+                      .sort((a, b) => a.responseTime - b.responseTime)
+                      .map((answer, index) => {
+                        const team = gameState.teams.find(t => t.id === answer.teamId);
+                        const isFirst = index === 0;
+                        const isFastest = isFirst && gameState.playerAnswers.length > 1;
+                        return (
+                          <div
+                            key={answer.playerId}
+                            className={`flex items-center gap-3 px-4 py-2 rounded-lg ${
+                              isFastest ? 'bg-yellow-500/20 border border-yellow-500/50' : 'bg-gray-700/50'
+                            }`}
+                          >
+                            {isFastest && <span className="text-yellow-400 text-lg">🏆</span>}
+                            <div
+                              className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold"
+                              style={{ backgroundColor: team?.color }}
+                            >
+                              {gameState.answerRevealed ? (answer.isCorrect ? '✓' : '✗') : ''}
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-bold" style={{ color: team?.color }}>
+                                {team?.players[0]?.name || team?.name}
+                              </div>
+                              <div className={`text-2xl font-black font-mono ${isFastest ? 'text-yellow-400' : 'text-white'}`}>
+                                {(answer.responseTime / 1000).toFixed(2)}s
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Instructions */}
             {/* Fastest Finger Buzzing Phase - prompt all players to buzz */}
             {isFastestFinger && ffState && ffState.phase === 'buzzing' && !gameState.answerRevealed && (
@@ -589,19 +662,39 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* Direct answer prompt - for multiple-choice, true-false, and picture-sound rounds (no buzzing required) */}
+            {/* Direct answer prompt - for multiple-choice, true-false rounds (no buzzing required) */}
             {!gameState.answerRevealed && !gameState.timerExpired && currentRound &&
              (currentRound.config.type === 'multiple-choice' || currentRound.config.type === 'true-false') && (
               <div className="mt-10 text-center">
-                <div className="inline-flex items-center gap-4 px-8 py-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                  <div className="flex gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-500" />
-                    <div className="w-6 h-6 rounded-full bg-orange-500" />
-                    <div className="w-6 h-6 rounded-full bg-green-500" />
-                    <div className="w-6 h-6 rounded-full bg-yellow-500" />
+                <div className="inline-flex flex-col items-center gap-3 px-10 py-5 bg-yellow-500/20 rounded-xl border-2 border-yellow-500/50 animate-pulse">
+                  <div className="text-2xl font-black text-yellow-400">NO BUZZER NEEDED!</div>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '100ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '200ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-yellow-500 animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
-                  <span className="text-xl text-gray-300 font-medium">
-                    Press the colored button for your answer!
+                  <span className="text-xl text-white font-bold">
+                    ANSWER DIRECTLY with your colored button!
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Speed Race prompt - race to answer correctly */}
+            {!gameState.answerRevealed && !gameState.timerExpired && currentRound &&
+             currentRound.config.type === 'speed-race' && (
+              <div className="mt-10 text-center">
+                <div className="inline-flex flex-col items-center gap-3 px-10 py-5 bg-green-500/20 rounded-xl border-2 border-green-500/50 animate-pulse">
+                  <div className="text-2xl font-black text-green-400">NO BUZZER - RACE TO ANSWER!</div>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '100ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '200ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-yellow-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-xl text-white font-bold">
+                    1st = 500pts | 2nd = 300pts | 3rd = 150pts | 4th = 50pts
                   </span>
                 </div>
               </div>
@@ -611,15 +704,16 @@ export default function GamePage() {
             {!gameState.answerRevealed && !gameState.timerExpired && currentRound &&
              currentRound.config.type === 'picture-sound' && (
               <div className="mt-10 text-center">
-                <div className="inline-flex items-center gap-4 px-8 py-4 bg-purple-500/20 rounded-xl border border-purple-500/30">
-                  <div className="flex gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-500" />
-                    <div className="w-6 h-6 rounded-full bg-orange-500" />
-                    <div className="w-6 h-6 rounded-full bg-green-500" />
-                    <div className="w-6 h-6 rounded-full bg-yellow-500" />
+                <div className="inline-flex flex-col items-center gap-3 px-10 py-5 bg-purple-500/20 rounded-xl border-2 border-purple-500/50 animate-pulse">
+                  <div className="text-2xl font-black text-purple-400">NO BUZZER NEEDED!</div>
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '100ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '200ms' }} />
+                    <div className="w-8 h-8 rounded-full bg-yellow-500 animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
-                  <span className="text-xl text-purple-300 font-medium">
-                    Guess the picture! The sooner you answer, the more points!
+                  <span className="text-xl text-white font-bold">
+                    ANSWER DIRECTLY - Faster = More Points!
                   </span>
                 </div>
               </div>
@@ -628,13 +722,14 @@ export default function GamePage() {
             {/* Standard "buzz in" prompt - for rounds that require buzzing first */}
             {!gameState.answerRevealed && !currentTurnBuzzer && currentRound &&
              currentRound.config.type !== 'multiple-choice' && currentRound.config.type !== 'true-false' &&
-             currentRound.config.type !== 'picture-sound' &&
-             !(isFastestFinger && ffState && ffState.phase === 'buzzing') && (
+             currentRound.config.type !== 'picture-sound' && currentRound.config.type !== 'speed-race' && currentRound.config.type !== 'hot-potato' &&
+             !(isFastestFinger && ffState && ffState.phase === 'buzzing') &&
+             !(isStealPoints && stealState && stealState.phase === 'buzzing') && (
               <div className="mt-10 text-center">
                 <div className="inline-flex items-center gap-3 px-8 py-4 bg-red-500/20 rounded-xl border border-red-500/30">
                   <div className="w-8 h-8 rounded-full bg-red-500 animate-pulse" />
                   <span className="text-xl text-red-300 font-medium">
-                    Press the RED button to buzz in!
+                    Buzzer required! Press RED to buzz in first!
                   </span>
                 </div>
               </div>
@@ -717,6 +812,16 @@ export default function GamePage() {
           <div className="text-center">
             <div className="text-6xl mb-4 animate-bounce">{ROUND_ICONS[currentRound.config.type]}</div>
             <h2 className="text-4xl font-bold mb-4">{currentRound.config.name}</h2>
+            {/* NO BUZZER indicator for direct answer rounds */}
+            {(currentRound.config.type === 'multiple-choice' || currentRound.config.type === 'true-false' ||
+              currentRound.config.type === 'picture-sound' || currentRound.config.type === 'speed-race') && (
+              <div className="mb-4">
+                <span className="bg-yellow-500 text-black px-6 py-3 rounded-xl font-black text-2xl animate-pulse inline-block">
+                  NO BUZZER NEEDED!
+                </span>
+                <p className="text-yellow-400 mt-2 text-lg font-bold">Answer directly with your colored button!</p>
+              </div>
+            )}
             <p className="text-xl text-gray-400 mb-2">{currentRound.config.description}</p>
             <div className="flex gap-4 justify-center mt-6 text-sm text-gray-500">
               <span>+{currentRound.config.pointsCorrect} correct</span>
@@ -767,7 +872,7 @@ export default function GamePage() {
               >
                 <div className="text-7xl mb-4">💰</div>
                 <div className="text-5xl font-black text-white mb-2">
-                  {buzzedTeam?.funName || buzzedTeam?.name}
+                  {buzzedTeam?.players[0]?.name || buzzedTeam?.name}
                 </div>
                 <div className="text-3xl font-bold" style={{ color: buzzedTeam?.color }}>
                   {buzzedPlayerInfo?.name}
@@ -827,7 +932,7 @@ export default function GamePage() {
                         className="text-3xl font-bold mb-2"
                         style={{ color: team.color }}
                       >
-                        {team.name}
+                        {team.players[0]?.name || team.name}
                       </div>
                       <div className="text-5xl font-black text-white mb-4">
                         {team.score.toLocaleString()}
@@ -1080,7 +1185,7 @@ function HotPotatoDisplay({
   if (state.phase === 'passing') {
     // Find the team that answered correctly (the passer)
     const passerTeam = teams.find(t => t.players.some(p => p.id === state.lastCorrectAnswerId));
-    const passerTeamName = passerTeam?.funName || passerTeam?.name || holderName;
+    const passerTeamName = passerTeam?.players[0]?.name || passerTeam?.name || holderName;
 
     return (
       <div className="fixed inset-0 bg-black/90 backdrop-blur-lg flex flex-col items-center justify-center z-50">
@@ -1107,7 +1212,7 @@ function HotPotatoDisplay({
                   {player.controllerIndex}
                 </div>
                 <div className="text-lg font-bold" style={{ color: team.color }}>
-                  {team.funName || team.name}
+                  {team.players[0]?.name || team.name}
                 </div>
               </div>
             );
@@ -1188,7 +1293,7 @@ function GameOverScreen({ teams }: { teams: Team[] }) {
           className="text-6xl font-black mb-2"
           style={{ color: winner.color }}
         >
-          {winner.funName || winner.name}
+          {winner.players[0]?.name || winner.name}
         </div>
         <div className="text-4xl text-gray-300">{winner.score.toLocaleString()} points</div>
       </div>
@@ -1200,7 +1305,7 @@ function GameOverScreen({ teams }: { teams: Team[] }) {
               {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
             </div>
             <div className="text-xl font-bold" style={{ color: team.color }}>
-              {team.funName || team.name}
+              {team.players[0]?.name || team.name}
             </div>
             <div className="text-2xl text-gray-300">{team.score.toLocaleString()}</div>
           </div>

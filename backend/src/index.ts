@@ -103,6 +103,9 @@ const autoShowPointsTimers: Map<string, NodeJS.Timeout> = new Map();
 // Fastest finger turn timers
 const fastestFingerTimers: Map<string, NodeJS.Timeout> = new Map();
 
+// Steal Points answer timers
+const stealPointsTimers: Map<string, NodeJS.Timeout> = new Map();
+
 // Hot Potato bomb timers
 const hotPotatoTimers: Map<string, NodeJS.Timeout> = new Map();
 
@@ -219,7 +222,7 @@ function scheduleAutoShowPoints(gameId: string) {
         const oldScore = newScore - change;
         return {
           teamId: team.id,
-          teamName: team.name,
+          teamName: team.players[0]?.name || team.name,
           teamColor: team.color || '#888',
           change,
           oldScore: Math.max(0, oldScore),
@@ -278,28 +281,101 @@ function startFastestFingerTurnTimer(gameId: string) {
     if (state.answerTimeLeft <= 0) {
       clearFastestFingerTimer(gameId);
 
-      // Apply penalty for timeout (same as wrong answer: -250 points, minimum 0)
+      // NOTE: Penalty is NOT applied here - it will be applied when answer is revealed
+      // This prevents the scoreboard from giving away the timeout before the reveal
+      // Store a "timeout" answer so the penalty can be tracked
       const buzzer = currentGame.buzzedPlayers[0];
       if (buzzer) {
-        const team = currentGame.teams.find(t => t.id === buzzer.teamId);
-        if (team) {
-          team.score = Math.max(0, team.score - 250);
-          console.log(`[FASTEST-FINGER] Timeout penalty: ${team.name} -250 points (score: ${team.score})`);
-        }
+        // Add a timeout answer with penalty points
+        currentGame.playerAnswers.push({
+          playerId: buzzer.playerId,
+          teamId: buzzer.teamId,
+          choiceId: 'timeout', // Special marker for timeout
+          timestamp: Date.now(),
+          responseTime: 0,
+          isCorrect: false,
+          pointsEarned: -250 // Timeout penalty
+        });
+        console.log(`[FASTEST-FINGER] Timeout - penalty will be applied on reveal`);
       }
 
       // Turn off lights
       buzzController.allLightsOff();
 
-      // Reveal answer and move on
+      // Reveal answer and move on (penalty applied during reveal)
       io.to(gameId).emit('fastestFingerTurnTimeout');
       emitSound(gameId, 'wrong');
-      io.to(gameId).emit('gameState', currentGame);
+      // NOTE: Don't emit gameState here - wait for reveal to prevent scoreboard spoiler
       scheduleAutoReveal(gameId);
     }
   }, 1000);
 
   fastestFingerTimers.set(gameId, timer);
+}
+
+function clearStealPointsTimer(gameId: string) {
+  const timer = stealPointsTimers.get(gameId);
+  if (timer) {
+    clearInterval(timer);
+    stealPointsTimers.delete(gameId);
+  }
+}
+
+function startStealPointsTurnTimer(gameId: string) {
+  const game = gameEngine.getGame(gameId);
+  if (!game || !game.stealPointsState) return;
+
+  clearStealPointsTimer(gameId);
+
+  const timer = setInterval(() => {
+    const currentGame = gameEngine.getGame(gameId);
+    if (!currentGame || !currentGame.stealPointsState || currentGame.answerRevealed) {
+      clearStealPointsTimer(gameId);
+      return;
+    }
+
+    const state = currentGame.stealPointsState;
+    state.answerTimeLeft--;
+
+    // Emit the updated timer to clients
+    io.to(gameId).emit('stealPointsUpdate', state);
+    io.to(gameId).emit('gameState', currentGame);
+
+    // Tick sound for countdown
+    if (state.answerTimeLeft > 0) {
+      emitSound(gameId, 'tick');
+    }
+
+    // Time's up - buzzer didn't answer in time (treated as wrong answer with penalty)
+    if (state.answerTimeLeft <= 0) {
+      clearStealPointsTimer(gameId);
+
+      // Store a "timeout" answer so the penalty can be tracked
+      const buzzer = currentGame.buzzedPlayers[0];
+      if (buzzer) {
+        // Add a timeout answer with penalty points
+        currentGame.playerAnswers.push({
+          playerId: buzzer.playerId,
+          teamId: buzzer.teamId,
+          choiceId: 'timeout', // Special marker for timeout
+          timestamp: Date.now(),
+          responseTime: 0,
+          isCorrect: false,
+          pointsEarned: -500 // Point Heist timeout penalty
+        });
+        console.log(`[STEAL-POINTS] Timeout - penalty will be applied on reveal`);
+      }
+
+      // Turn off lights
+      buzzController.allLightsOff();
+
+      // Reveal answer and move on (penalty applied during reveal)
+      emitSound(gameId, 'wrong');
+      scheduleAutoReveal(gameId);
+    }
+  }, 1000);
+
+  stealPointsTimers.set(gameId, timer);
 }
 
 function scheduleAutoReveal(gameId: string) {
@@ -562,8 +638,8 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
     }
 
     if (event.button === 'red') {
-      // BUZZ IN - but block for multiple-choice, true-false, picture-sound, and hot-potato rounds (no buzzing needed)
-      if (round.config.type === 'multiple-choice' || round.config.type === 'true-false' || round.config.type === 'picture-sound' || round.config.type === 'hot-potato') {
+      // BUZZ IN - but block for multiple-choice, true-false, picture-sound, speed-race, and hot-potato rounds (no buzzing needed)
+      if (round.config.type === 'multiple-choice' || round.config.type === 'true-false' || round.config.type === 'picture-sound' || round.config.type === 'speed-race' || round.config.type === 'hot-potato') {
         // These round types don't use buzzing - players answer directly with colored buttons
         // Red button is ignored
         console.log(`[PRESS] Red button ignored for ${round.config.type} round`);
@@ -604,14 +680,25 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
           }
         } else if (round.config.type === 'steal-points' && game.stealPointsState) {
           // For steal-points: first buzzer gets to answer, others are turned off
+          // Clear the question timer - buzzer now has time to answer
+          gameEngine.clearTimer(game.id, 'question');
+          clearQuestionTimerInterval(game.id);
+
           io.to(game.id).emit('stealPointsUpdate', game.stealPointsState);
 
           // Only the buzzer's light stays on, turn off all others
           const lights: [boolean, boolean, boolean, boolean] = [false, false, false, false];
           lights[event.player - 1] = true;
           buzzController.setLights(lights);
+
+          // Start the answer timer (5 seconds)
+          startStealPointsTurnTimer(game.id);
         } else if (round.config.type === 'final' && buzzResult.isFirst) {
           // For final round: first buzzer gets to answer, turn off all other lights
+          // Clear the question timer - buzzer now has time to answer
+          gameEngine.clearTimer(game.id, 'question');
+          clearQuestionTimerInterval(game.id);
+
           console.log(`[FINAL] First buzz by controller ${event.player} - only they can answer`);
           const lights: [boolean, boolean, boolean, boolean] = [false, false, false, false];
           lights[event.player - 1] = true;
@@ -772,6 +859,12 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
               // Pass the bomb
               const passResult = gameEngine.passHotPotatoTo(game.id, targetPlayer.id);
               if (passResult) {
+                // Award points for correct answer NOW (after passing, so scoreboard doesn't give it away)
+                const passerTeam = game.teams.find(t => t.players.some(p => p.id === pressedPlayer.id));
+                if (passerTeam) {
+                  passerTeam.score += 250; // Correct answer reward
+                }
+
                 console.log(`[HOT-POTATO] Bomb passed to ${passResult.newHolderName}`);
                 emitSound(game.id, 'buzz');
                 io.to(game.id).emit('hotPotatoUpdate', game.hotPotatoState);
@@ -812,9 +905,9 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
         emitSound(game.id, answer.isCorrect ? 'correct' : 'wrong');
         io.to(game.id).emit('gameState', game);
 
-        // For multiple-choice/true-false/picture-sound rounds: only turn off the answering player's light
+        // For multiple-choice/true-false/picture-sound/speed-race rounds: only turn off the answering player's light
         // For other rounds: turn off all lights on wrong answer
-        if (round.config.type === 'multiple-choice' || round.config.type === 'true-false' || round.config.type === 'picture-sound') {
+        if (round.config.type === 'multiple-choice' || round.config.type === 'true-false' || round.config.type === 'picture-sound' || round.config.type === 'speed-race') {
           // Turn off only this player's light (they've answered, can't change)
           buzzController.setLight(event.player as 1 | 2 | 3 | 4, false);
         } else if (answer.isCorrect) {
@@ -837,6 +930,7 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
         if (round.config.type === 'steal-points' && game.stealPointsState) {
           // For both correct and wrong answers, turn off lights and schedule reveal
           // The steal phase (for correct answers) will be triggered AFTER reveal
+          clearStealPointsTimer(game.id);
           buzzController.allLightsOff();
           scheduleAutoReveal(game.id);
           continue;
@@ -862,10 +956,8 @@ buzzController.on('press', (event: ControllerBuzzEvent) => {
 
           if (answer.isCorrect) {
             // Correct answer! Player can pass the bomb to someone else
-            // Award points for correct answer
-            if (playerTeam) {
-              playerTeam.score += 250; // Correct answer reward
-            }
+            // NOTE: Points are awarded AFTER passing the bomb (in passHotPotatoTo handler)
+            // This prevents the scoreboard from revealing the answer before the passing phase
 
             // Start passing phase
             gameEngine.startHotPotatoPassing(game.id, answer.playerId);
@@ -1335,7 +1427,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  socket.on('retryRound', async () => {
+  socket.on('retryRound', async (keepScores: boolean = false) => {
     const gameId = socket.data.gameId;
     if (!gameId) return;
 
@@ -1344,7 +1436,7 @@ io.on('connection', async (socket) => {
     clearQuestionTimerInterval(gameId);
     clearFastestFingerTimer(gameId);
 
-    const round = gameEngine.retryRound(gameId);
+    const round = gameEngine.retryRound(gameId, keepScores);
     if (round) {
       const game = gameEngine.getGame(gameId)!;
       emitSound(gameId, 'round-start');
@@ -1411,6 +1503,33 @@ io.on('connection', async (socket) => {
         io.to(gameId).emit('gameState', game);
       }
     }
+  });
+
+  // Reset bomb timer (for when the timer bugs out during hot potato)
+  socket.on('resetBombTimer', () => {
+    const gameId = socket.data.gameId;
+    if (!gameId) return;
+
+    const game = gameEngine.getGame(gameId);
+    if (!game) return;
+
+    const round = gameEngine.getCurrentRound(gameId);
+    if (!round || round.config.type !== 'hot-potato') return;
+
+    // Only reset if we have hot potato state and it's in playing phase
+    if (!game.hotPotatoState || game.hotPotatoState.phase !== 'playing') return;
+
+    // Reset the bomb timer to full
+    game.hotPotatoState.bombTimeLeft = game.hotPotatoState.bombTotalTime;
+
+    // Clear and restart the timer
+    clearHotPotatoTimer(gameId);
+    startHotPotatoBombTimer(gameId);
+
+    // Emit updated state
+    io.to(gameId).emit('hotPotatoUpdate', game.hotPotatoState);
+    io.to(gameId).emit('gameState', game);
+    console.log(`[HOT-POTATO] Bomb timer reset to ${game.hotPotatoState.bombTotalTime}s`);
   });
 
   socket.on('startQuestion', () => {
@@ -1778,7 +1897,7 @@ io.on('connection', async (socket) => {
       const oldScore = newScore - change;
       return {
         teamId: team.id,
-        teamName: team.name,
+        teamName: team.players[0]?.name || team.name,
         teamColor: team.color || '#888',
         change,
         oldScore: Math.max(0, oldScore),

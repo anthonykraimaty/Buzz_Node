@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { ROUND_ICONS } from '../types';
 
 export default function HostPage() {
   const navigate = useNavigate();
+  const [showRetryModal, setShowRetryModal] = useState(false);
   const {
     gameState,
     timeLeft,
@@ -26,6 +28,7 @@ export default function HostPage() {
     triggerPointsAnimation,
     updateSettings,
     startNewBombCycle,
+    resetBombTimer,
   } = useGameStore();
 
   if (!gameState) {
@@ -59,6 +62,10 @@ export default function HostPage() {
   const currentQuestion = gameState.currentQuestion;
   const questionIndex = currentRound?.currentQuestionIndex ?? 0;
   const totalRoundQuestions = currentRound?.questions?.length ?? 0;
+
+  // Get next question preview
+  const nextQuestionIndex = questionIndex + 1;
+  const upcomingQuestion = currentRound?.questions?.[nextQuestionIndex];
 
   return (
     <div className="min-h-screen p-6">
@@ -128,6 +135,15 @@ export default function HostPage() {
           {/* Round Info for Host to explain */}
           {currentRound && (
             <div className="mt-4 pt-4 border-t border-gray-700">
+              {/* NO BUZZER indicator for direct answer rounds */}
+              {(currentRound.config.type === 'multiple-choice' || currentRound.config.type === 'true-false' ||
+                currentRound.config.type === 'picture-sound' || currentRound.config.type === 'speed-race') && (
+                <div className="text-center mb-3">
+                  <span className="bg-yellow-500 text-black px-4 py-2 rounded-lg font-black text-lg animate-pulse">
+                    NO BUZZER - ANSWER DIRECTLY!
+                  </span>
+                </div>
+              )}
               <div className="text-center mb-3">
                 <div className="text-lg text-gray-300 italic">"{currentRound.config.description}"</div>
               </div>
@@ -246,6 +262,18 @@ export default function HostPage() {
                 </button>
               )}
 
+              {/* Hot Potato: Reset Bomb Timer button - always visible during hot potato gameplay */}
+              {currentRound?.config.type === 'hot-potato' &&
+               gameState.hotPotatoState &&
+               gameState.hotPotatoState.phase === 'playing' && (
+                <button
+                  onClick={resetBombTimer}
+                  className="col-span-2 bg-orange-600 hover:bg-orange-500 py-4 rounded-xl text-xl font-bold"
+                >
+                  🔄 Reset Bomb Timer ({gameState.hotPotatoState.bombTotalTime}s)
+                </button>
+              )}
+
               {/* Start Question button - shown when no question is active and round is not completed */}
               {!currentQuestion && currentRound?.status !== 'completed' &&
                !(currentRound?.config.type === 'hot-potato' && gameState.hotPotatoState?.phase === 'exploded') && (
@@ -302,11 +330,7 @@ export default function HostPage() {
               </button>
 
               <button
-                onClick={() => {
-                  if (confirm('Retry this round? All points earned in this round will be reset.')) {
-                    retryRound();
-                  }
-                }}
+                onClick={() => setShowRetryModal(true)}
                 className="bg-orange-600 hover:bg-orange-500 py-4 rounded-xl text-xl font-bold"
               >
                 Retry Round
@@ -386,7 +410,7 @@ export default function HostPage() {
         {/* Current Question Preview */}
         {currentQuestion && (
           <div className="bg-gray-800/50 rounded-xl p-6 mb-6">
-            <div className="text-gray-400 text-sm mb-2">Current Question</div>
+            <div className="text-gray-400 text-sm mb-2">Current Question ({questionIndex + 1}/{totalRoundQuestions})</div>
             <div className="text-xl font-semibold mb-4">{currentQuestion.text}</div>
             <div className="grid grid-cols-2 gap-2">
               {currentQuestion.choices.map((choice) => (
@@ -421,6 +445,44 @@ export default function HostPage() {
           </div>
         )}
 
+        {/* Next Question Preview */}
+        {upcomingQuestion && (
+          <div className="bg-gray-700/30 rounded-xl p-4 mb-6 border border-gray-600/50">
+            <div className="text-gray-500 text-sm mb-2">Next Question ({nextQuestionIndex + 1}/{totalRoundQuestions})</div>
+            <div className="text-lg text-gray-300 mb-3">{upcomingQuestion.text}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {upcomingQuestion.choices.map((choice) => (
+                <div
+                  key={choice.id}
+                  className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                    choice.isCorrect
+                      ? 'bg-green-500/20 ring-1 ring-green-500/50'
+                      : 'bg-gray-700/50'
+                  }`}
+                >
+                  <span
+                    className="w-4 h-4 rounded-full"
+                    style={{
+                      backgroundColor:
+                        choice.color === 'blue'
+                          ? '#1e88e5'
+                          : choice.color === 'orange'
+                          ? '#fb8c00'
+                          : choice.color === 'green'
+                          ? '#43a047'
+                          : '#fdd835',
+                    }}
+                  />
+                  <span className="text-gray-300">{choice.text}</span>
+                  {choice.isCorrect && (
+                    <span className="text-green-400/70 ml-auto text-xs">✓</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Buzz Status */}
         {gameState.buzzedPlayers && gameState.buzzedPlayers.length > 0 && (
           <div className="bg-buzz-red/20 border border-buzz-red rounded-xl p-6 mb-6">
@@ -430,7 +492,10 @@ export default function HostPage() {
                 Controller {gameState.buzzedPlayers[0].controllerIndex}
               </div>
               <div className="text-gray-400">
-                {gameState.teams.find((t) => t.id === gameState.buzzedPlayers[0]?.teamId)?.name || 'Unknown Team'}
+                {(() => {
+                  const team = gameState.teams.find((t) => t.id === gameState.buzzedPlayers[0]?.teamId);
+                  return team?.players[0]?.name || team?.name || 'Unknown Team';
+                })()}
               </div>
               {gameState.buzzedPlayers.length > 1 && (
                 <div className="mt-2 text-sm text-gray-500">
@@ -455,7 +520,7 @@ export default function HostPage() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <div className="font-bold text-lg">{team.name}</div>
+                      <div className="font-bold text-lg">{team.players[0]?.name || team.name}</div>
                       <div className="text-3xl font-black" style={{ color: team.color }}>
                         {team.score}
                       </div>
@@ -641,7 +706,7 @@ export default function HostPage() {
                       <span className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">
                         {controllerIndex}
                       </span>
-                      <span className="text-sm">{team?.name || `P${controllerIndex}`}</span>
+                      <span className="text-sm">{team?.players[0]?.name || team?.name || `P${controllerIndex}`}</span>
                     </button>
                   );
                 })}
@@ -655,6 +720,50 @@ export default function HostPage() {
           })()}
         </div>
       </div>
+
+      {/* Retry Round Modal */}
+      {showRetryModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <h2 className="text-2xl font-bold mb-4 text-center">Retry Round</h2>
+            <p className="text-gray-400 text-center mb-6">
+              Choose how to handle scores when retrying this round:
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  retryRound(false);
+                  setShowRetryModal(false);
+                }}
+                className="w-full bg-orange-600 hover:bg-orange-500 py-4 rounded-xl text-lg font-bold flex flex-col items-center"
+              >
+                <span>Reset Scores</span>
+                <span className="text-sm font-normal text-orange-200">
+                  Restore scores to what they were before this round started
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  retryRound(true);
+                  setShowRetryModal(false);
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl text-lg font-bold flex flex-col items-center"
+              >
+                <span>Keep Scores</span>
+                <span className="text-sm font-normal text-blue-200">
+                  Keep current scores and just restart the questions
+                </span>
+              </button>
+              <button
+                onClick={() => setShowRetryModal(false)}
+                className="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-xl text-lg font-medium mt-4"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

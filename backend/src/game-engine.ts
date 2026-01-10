@@ -461,7 +461,7 @@ export class GameEngine {
     return round;
   }
 
-  retryRound(gameId: string): Round | null {
+  retryRound(gameId: string, keepScores: boolean = false): Round | null {
     const game = this.games.get(gameId);
     if (!game) return null;
 
@@ -470,8 +470,8 @@ export class GameEngine {
 
     const round = game.rounds[roundIndex];
 
-    // Restore scores to what they were at the start of this round
-    if (round.scoresAtStart) {
+    // Restore scores to what they were at the start of this round (unless keepScores is true)
+    if (!keepScores && round.scoresAtStart) {
       console.log(`[RETRY] Restoring scores from round ${roundIndex} start:`, round.scoresAtStart);
       for (const savedScore of round.scoresAtStart) {
         const team = game.teams.find(t => t.id === savedScore.teamId);
@@ -480,6 +480,8 @@ export class GameEngine {
           team.score = savedScore.score;
         }
       }
+    } else if (keepScores) {
+      console.log(`[RETRY] Keeping current scores for round ${roundIndex}`);
     }
 
     // Reset round state
@@ -586,7 +588,9 @@ export class GameEngine {
     if (round.config.type === 'steal-points') {
       game.stealPointsState = {
         phase: 'buzzing',
-        stealAmount: 500  // Fixed steal amount
+        stealAmount: 500,  // Fixed steal amount
+        answerTimeLeft: 5, // 5 seconds to answer
+        answerTimeLimit: 5
       };
       console.log('[STEAL-POINTS] Initialized stealPointsState with phase: buzzing');
     } else {
@@ -709,6 +713,8 @@ export class GameEngine {
         game.stealPointsState.buzzerPlayerId = foundPlayer.id;
         game.stealPointsState.buzzerTeamId = foundTeam.id;
         game.stealPointsState.buzzerControllerIndex = controllerIndex;
+        // Reset answer timer
+        game.stealPointsState.answerTimeLeft = game.stealPointsState.answerTimeLimit;
       } else {
         // Not first buzzer - reject the buzz (already have a buzzer)
         console.log('[BUZZ] REJECTED: Not first buzzer in steal-points');
@@ -849,9 +855,12 @@ export class GameEngine {
     const choice = game.currentQuestion.choices.find(c => c.color === choiceColor);
     if (!choice) return null;
 
+    const now = Date.now();
     const responseTime = game.questionStartTime
-      ? Date.now() - game.questionStartTime
+      ? now - game.questionStartTime
       : 0;
+
+    console.log(`[ANSWER] Player ${foundPlayer.name} answered. questionStartTime=${game.questionStartTime}, now=${now}, responseTime=${responseTime}ms`);
 
     // Calculate points based on round type
     const points = this.calculatePoints(round, choice.isCorrect, responseTime, game);
@@ -886,6 +895,27 @@ export class GameEngine {
       return config.pointsWrong;
     }
 
+    // True-false: only the first correct answer gets points
+    if (config.type === 'true-false') {
+      const hasCorrectAnswer = game.playerAnswers.some(a => a.isCorrect);
+      if (hasCorrectAnswer) {
+        return 0; // Someone already answered correctly first
+      }
+      return config.pointsCorrect;
+    }
+
+    // Speed-race: points based on order of correct answers
+    if (config.type === 'speed-race') {
+      const speedRacePoints = config.speedRacePoints || [500, 300, 150, 50];
+      // Count how many correct answers came before this one
+      const correctAnswersBefore = game.playerAnswers.filter(a => a.isCorrect).length;
+      // Get points for this position (0-indexed)
+      if (correctAnswersBefore < speedRacePoints.length) {
+        return speedRacePoints[correctAnswersBefore];
+      }
+      return 0; // Beyond the defined positions, no points
+    }
+
     // Steal-points: correct answer gives 0 points directly - points come from stealing
     if (config.type === 'steal-points') {
       return 0; // Points are added when stealing from opponent
@@ -900,10 +930,14 @@ export class GameEngine {
       return 0; // Points are added when banked
     }
 
-    // Speed-based points
+    // Speed-based points for multiple-choice style rounds
+    // Use position-based scoring: 1st correct = pointsFast, 2nd+ correct = pointsSlow
     if (config.pointsFast && config.pointsSlow) {
-      const fastThreshold = (config.timePerQuestion * 1000) / 2;
-      return responseTime < fastThreshold ? config.pointsFast : config.pointsSlow;
+      const correctAnswersBefore = game.playerAnswers.filter(a => a.isCorrect).length;
+      // First correct answer gets pointsFast, everyone else gets pointsSlow
+      const points = correctAnswersBefore === 0 ? config.pointsFast : config.pointsSlow;
+      console.log(`[POINTS] Position-based scoring: correctAnswersBefore=${correctAnswersBefore}, points=${points} (${correctAnswersBefore === 0 ? '1ST' : 'NOT 1ST'})`);
+      return points;
     }
 
     return config.pointsCorrect;
@@ -1005,8 +1039,8 @@ export class GameEngine {
       const player = team.players.find(p => p.id === holderId);
       if (player) {
         team.score = Math.max(0, team.score - penalty);
-        console.log(`[HOT-POTATO] BOOM! ${player.name} (${team.name}) loses ${penalty} points!`);
-        return { playerId: holderId, playerName: player.name, teamId: team.id, teamName: team.name, penalty };
+        console.log(`[HOT-POTATO] BOOM! ${player.name} (${team.players[0]?.name || team.name}) loses ${penalty} points!`);
+        return { playerId: holderId, playerName: player.name, teamId: team.id, teamName: team.players[0]?.name || team.name, penalty };
       }
     }
 
@@ -1025,7 +1059,7 @@ export class GameEngine {
           playerId: player.id,
           playerName: player.name,
           teamId: team.id,
-          teamName: team.name,
+          teamName: team.players[0]?.name || team.name,
           controllerIndex: player.controllerIndex
         };
       }

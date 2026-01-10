@@ -92,6 +92,69 @@ Red button LEDs controlled via HID reports:
 4. **Configure Rounds**: Select which round types to include
 5. **Add Questions**: For each round, add appropriate questions
 
+## Importing Questions (CSV Format)
+
+Questions can be imported via CSV file. The format is:
+
+```
+Game Mode,Question,Correct Answer,Wrong Answer 1,Wrong Answer 2,Wrong Answer 3
+```
+
+### Round Type Tags
+
+Use these tags in the "Game Mode" column:
+
+| Tag | Round Type | Notes |
+|-----|------------|-------|
+| `multiple-choice` | Multiple Choice Mayhem | Standard 4-option questions |
+| `true-false` | True or False Frenzy | Only needs 2 answers (True/False) |
+| `fastest-finger` | Fastest Finger | Buzz-in round, 4 options |
+| `picture-sound` | Picture This! | Can use filename for media |
+| `speed-race` | Speed Race | Race to answer, position-based scoring |
+| `steal-points` or `point heist` | Point Heist | Steal points from rivals |
+| `hot-potato` | Hot Potato | Pass the bomb round |
+| `ladder` | The Ladder | Climb and bank points |
+| `final` | Final Showdown | High-stakes finale |
+
+**Alternative formats accepted:** Tags can use hyphens, spaces, or be joined (e.g., `multiple-choice`, `multiple choice`, `multiplechoice` all work).
+
+### Example CSV
+
+```csv
+Game Mode,Question,Correct Answer,Wrong Answer 1,Wrong Answer 2,Wrong Answer 3
+multiple-choice,What is the capital of France?,Paris,London,Berlin,Madrid
+multiple-choice,Which planet is closest to the Sun?,Mercury,Venus,Earth,Mars
+true-false,The Earth is flat.,False,True,,
+true-false,Water boils at 100 degrees Celsius.,True,False,,
+fastest-finger,What is 2 + 2?,4,3,5,6
+hot-potato,What color is the sky?,Blue,Green,Red,Yellow
+steal-points,Who wrote Romeo and Juliet?,Shakespeare,Dickens,Austen,Hemingway
+speed-race,What is the largest ocean?,Pacific,Atlantic,Indian,Arctic
+```
+
+### Picture/Sound Round Media
+
+For `picture-sound` rounds, you can use a filename instead of a question:
+
+```csv
+picture-sound,mystery_image.webp,Eiffel Tower,Big Ben,Statue of Liberty,Colosseum
+picture-sound,sound_clip.mp3,Dog Barking,Cat Meowing,Bird Chirping,Lion Roaring
+```
+
+- Media files should be placed in the `/media/` folder
+- Supported image formats: jpg, jpeg, png, gif, webp, svg, bmp
+- Supported audio formats: mp3, wav, ogg, m4a, aac, flac
+- Supported video formats: mp4, webm, mov, avi, mkv
+- The question text will auto-set to "What is this?"
+
+### Import/Export
+
+1. **Download Sample CSV**: Click "Sample CSV" button to get a template
+2. **Import CSV**: Click "Import CSV" and select your file
+3. **Export CSV**: Click "Export CSV" to download all current questions
+
+Questions are automatically matched to rounds by their game mode tag. If a round type doesn't exist in your game, those questions will be skipped.
+
 ### During the Game
 1. Display the **Game Screen** (`/game`) on a TV/projector
 2. Host uses **Host Controls** (`/host`) on a separate device

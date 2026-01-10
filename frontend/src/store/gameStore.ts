@@ -82,7 +82,7 @@ interface GameStore {
   // Game flow
   startGame: () => void;
   startRound: (roundIndex: number) => void;
-  retryRound: () => void;
+  retryRound: (keepScores?: boolean) => void;
   startQuestion: () => void;
   nextQuestion: () => void;
   revealAnswer: () => void;
@@ -95,6 +95,7 @@ interface GameStore {
   playerBank: (playerId: string) => void;
   selectStealTarget: (targetTeamId: string) => void;
   startNewBombCycle: () => void;  // Hot Potato: start new cycle after explosion
+  resetBombTimer: () => void;     // Hot Potato: reset bomb timer to full (for when timer bugs out)
 
   // Controller
   resetBuzz: () => void;
@@ -527,9 +528,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socket?.emit('startRound', roundIndex);
   },
 
-  retryRound: () => {
+  retryRound: (keepScores = false) => {
     const { socket } = get();
-    socket?.emit('retryRound');
+    socket?.emit('retryRound', keepScores);
   },
 
   startQuestion: () => {
@@ -582,6 +583,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { socket } = get();
     socket?.emit('startNewBombCycle');
     set({ hotPotatoExplosion: null });  // Clear explosion when starting new cycle
+  },
+
+  resetBombTimer: () => {
+    const { socket } = get();
+    socket?.emit('resetBombTimer');
   },
 
   // Controller

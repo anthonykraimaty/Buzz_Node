@@ -7,6 +7,7 @@ export type RoundType =
   | 'multiple-choice'     // All answer simultaneously
   | 'true-false'          // Binary choice
   | 'picture-sound'       // Media identification
+  | 'speed-race'          // Race to answer - 1st correct gets most points, 2nd less, etc.
   | 'steal-points'        // Competitive stealing
   | 'hot-potato'          // Bomb passing
   | 'ladder'              // Risk/reward banking
@@ -88,8 +89,10 @@ export interface RoundConfig {
   pointsWrong: number;
   pointsFast?: number;      // Bonus for fast answers
   pointsSlow?: number;      // Reduced points for slow answers
+  fastThresholdMs?: number; // Threshold in ms for fast vs slow (default: 2000ms)
   allowSteal?: boolean;
   ladderValues?: number[];  // For ladder round
+  speedRacePoints?: number[];  // For speed-race round: points by position [1st, 2nd, 3rd, 4th]
 }
 
 export interface Round {
@@ -168,6 +171,8 @@ export interface StealPointsState {
   buzzerTeamId?: string;          // Team of the player who buzzed in
   buzzerControllerIndex?: number; // Controller index of buzzer (1-4)
   stealAmount: number;            // Fixed at 500 points
+  answerTimeLeft: number;         // Seconds left to answer (countdown)
+  answerTimeLimit: number;        // Total seconds allowed to answer (e.g., 5)
 }
 
 // Main game state
@@ -274,18 +279,18 @@ export const DEFAULT_ROUNDS: RoundConfig[] = [
   {
     type: 'multiple-choice',
     name: 'Multiple Choice Mayhem',
-    description: 'Everyone answers! Faster = more points!',
+    description: 'NO BUZZER - Answer directly! 1st correct = 500pts, rest = 300pts',
     questionCount: 8,
     timePerQuestion: 7,   // 6-8s for fast thinking
-    pointsCorrect: 150,   // Base points (after 4s)
+    pointsCorrect: 150,   // Base points (fallback)
     pointsWrong: 0,
-    pointsFast: 500,      // 0-2s = +500
-    pointsSlow: 300       // 2-4s = +300
+    pointsFast: 500,      // 1st correct gets this
+    pointsSlow: 300       // 2nd+ correct gets this
   },
   {
     type: 'true-false',
     name: 'True or False Frenzy',
-    description: 'Quick decisions! Wrong answers hurt!',
+    description: 'NO BUZZER - Quick decisions! Wrong answers hurt!',
     questionCount: 10,
     timePerQuestion: 5,   // 5s per question
     pointsCorrect: 250,
@@ -294,13 +299,23 @@ export const DEFAULT_ROUNDS: RoundConfig[] = [
   {
     type: 'picture-sound',
     name: 'Picture This!',
-    description: 'Identify the image or sound!',
+    description: 'NO BUZZER - Identify the image or sound! 1st correct = 500pts, rest = 300pts',
     questionCount: 5,
     timePerQuestion: 10,  // 8-10s for recognition
-    pointsCorrect: 150,   // Base (6-10s)
+    pointsCorrect: 150,   // Base (fallback)
     pointsWrong: 0,
-    pointsFast: 500,      // 0-3s = +500
-    pointsSlow: 300       // 3-6s = +300
+    pointsFast: 500,      // 1st correct gets this
+    pointsSlow: 300       // 2nd+ correct gets this
+  },
+  {
+    type: 'speed-race',
+    name: 'Speed Race',
+    description: 'NO BUZZER - Race to answer! 1st correct = 500pts, 2nd = 300pts, 3rd = 150pts, 4th = 50pts',
+    questionCount: 8,
+    timePerQuestion: 10,  // 10s for everyone to answer
+    pointsCorrect: 0,     // Uses speedRacePoints instead
+    pointsWrong: 0,       // No penalty for wrong
+    speedRacePoints: [500, 300, 150, 50]  // 1st, 2nd, 3rd, 4th correct
   },
   {
     type: 'steal-points',
